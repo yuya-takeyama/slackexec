@@ -3,18 +3,23 @@ package main
 import (
 	"bytes"
 	"flag"
-	"github.com/nlopes/slack"
+	"fmt"
+	"github.com/yuya-takeyama/posixexec"
 	"io"
 	"os"
 	"os/exec"
-	"strings"
+	"os/user"
 )
 
 var channel string
 var name string
 var icon string
 
-func initFlags() {
+const (
+	ExitFatal = 111
+)
+
+func init() {
 	flag.StringVar(&channel, "channel", "#general", "channel to post message")
 	flag.StringVar(&name, "name", "slackexec", "username of the bot")
 	flag.StringVar(&icon, "icon", ":computer:", "icon of the bot")
@@ -22,42 +27,50 @@ func initFlags() {
 }
 
 func main() {
-	initFlags()
-	client := slack.New(os.Getenv("SLACK_API_TOKEN"))
+	client := NewSlack(name, icon, channel, os.Getenv("SLACK_API_TOKEN"))
 
-	flagArgs := flag.Args()
-	executable := flagArgs[0]
-	args := flagArgs[1:]
+	args := flag.Args()
 
-	client.PostMessage(
-		channel,
-		"Running below command..."+"```\n$ "+executable+" "+strings.Join(args, " ")+"```",
-		slack.PostMessageParameters{
-			Username:  name,
-			IconEmoji: icon,
-		},
-	)
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: slackexec -channel=CHANNELNAME COMMAND")
+		os.Exit(ExitFatal)
+	}
 
-	cmd := exec.Command(executable, args...)
+	command := args[0]
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slackexec: failed to get hostname: %s\n", err)
+		os.Exit(ExitFatal)
+	}
+
+	osUser, err := user.Current()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slackexec: failed to get username: %s\n", err)
+		os.Exit(ExitFatal)
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "slackexec: failed to get working directory: %s\n", err)
+		os.Exit(ExitFatal)
+	}
+
+	client.Post(fmt.Sprintf("Running on `%s@%s`:`%s`\n```\n$ %s\n```", osUser.Username, hostname, wd, command))
+
+	cmd := exec.Command("/bin/sh", "-c", args[0])
 	buf := new(bytes.Buffer)
-
 	writer := io.MultiWriter(buf, os.Stdout)
-
 	cmd.Stdout = writer
 	cmd.Stderr = writer
 
-	err := cmd.Run()
+	exitStatus, err := posixexec.Run(cmd)
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "slackexec: failed to exec command: %s\n", err)
+		os.Exit(ExitFatal)
 	}
 
-	client.PostMessage(
-		channel,
-		"Result:\n```\n"+buf.String()+"```",
-		slack.PostMessageParameters{
-			Username:  name,
-			IconEmoji: icon,
-		},
-	)
+	client.Post("Output:\n```\n" + buf.String() + "```")
+
+	os.Exit(exitStatus)
 }
