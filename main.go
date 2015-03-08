@@ -77,7 +77,7 @@ func main() {
 }
 
 func execCommand(command string) (*exec.Cmd, *bytes.Buffer) {
-	cmd := exec.Command("/bin/sh", "-c", command)
+	cmd := exec.Command(os.Getenv("SHELL"), "-c", command)
 	buf := new(bytes.Buffer)
 	writer := io.MultiWriter(buf, os.Stdout)
 	cmd.Stdout = writer
