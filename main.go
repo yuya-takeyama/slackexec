@@ -14,6 +14,7 @@ import (
 var channel string
 var name string
 var icon string
+var printVersion bool
 var hostname string
 var osUser *user.User
 var cwd string
@@ -29,25 +30,31 @@ func init() {
 	flag.StringVar(&channel, "channel", "#general", "channel to post message")
 	flag.StringVar(&name, "name", "slackexec", "username of the bot")
 	flag.StringVar(&icon, "icon", ":computer:", "icon of the bot")
+	flag.BoolVar(&printVersion, "version", false, "print version")
 	flag.Parse()
+
+	if (printVersion) {
+		fmt.Fprintf(os.Stderr, "%s version %s, build %s\n", Name, Version, GitCommit)
+		os.Exit(0)
+	}
 
 	client = NewSlack(name, icon, channel, os.Getenv("SLACK_API_TOKEN"))
 
 	hostname, err = os.Hostname()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "slackexec: failed to get hostname: %s\n", err)
+		fmt.Fprintf(os.Stderr, "%s: failed to get hostname: %s\n", Name, err)
 		os.Exit(ExitFatal)
 	}
 
 	osUser, err = user.Current()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "slackexec: failed to get username: %s\n", err)
+		fmt.Fprintf(os.Stderr, "%s: failed to get username: %s\n", Name, err)
 		os.Exit(ExitFatal)
 	}
 
 	cwd, err = os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "slackexec: failed to get working directory: %s\n", err)
+		fmt.Fprintf(os.Stderr, "%s: failed to get working directory: %s\n", Name, err)
 		os.Exit(ExitFatal)
 	}
 }
@@ -56,7 +63,7 @@ func main() {
 	args := flag.Args()
 
 	if len(args) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: slackexec -channel=CHANNELNAME COMMAND")
+		fmt.Fprintf(os.Stderr, "usage: %s -channel=CHANNELNAME COMMAND\n", Name)
 		os.Exit(ExitFatal)
 	}
 
@@ -67,7 +74,7 @@ func main() {
 	cmd, buf := execCommand(args[0])
 	exitStatus, err := posixexec.Run(cmd)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "slackexec: failed to exec command: %s\n", err)
+		fmt.Fprintf(os.Stderr, "%s: failed to exec command: %s\n", Name, err)
 		os.Exit(ExitFatal)
 	}
 
